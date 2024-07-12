@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Behavior Tree Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        #output {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Behavior Tree Demo</h1>
+    <button onclick="runBehaviorTree()">Run Behavior Tree</button>
+    <div id="output"></div>
+
+    <script>
+        class Node {
+            constructor() {
+                this.status = 'READY';
+            }
+
+            tick() {
+                if (this.status === 'READY') {
+                    this.onEnter();
+                }
+                this.status = this.onTick();
+                if (this.status !== 'RUNNING') {
+                    this.onExit();
+                }
+                return this.status;
+            }
+
+            onEnter() {}
+            onTick() {}
+            onExit() {}
+        }
+
+        class Sequence extends Node {
+            constructor(children) {
+                super();
+                this.children = children;
+                this.currentChild = 0;
+            }
+
+            onEnter() {
+                this.currentChild = 0;
+            }
+
+            onTick() {
+                while (this.currentChild < this.children.length) {
+                    const status = this.children[this.currentChild].tick();
+                    if (status !== 'SUCCESS') {
+                        return status;
+                    }
+                    this.currentChild++;
+                }
+                return 'SUCCESS';
+            }
+        }
+
+        class Selector extends Node {
+            constructor(children) {
+                super();
+                this.children = children;
+                this.currentChild = 0;
+            }
+
+            onEnter() {
+                this.currentChild = 0;
+            }
+
+            onTick() {
+                while (this.currentChild < this.children.length) {
+                    const status = this.children[this.currentChild].tick();
+                    if (status !== 'FAILURE') {
+                        return status;
+                    }
+                    this.currentChild++;
+                }
+                return 'FAILURE';
+            }
+        }
+
+        class Action extends Node {
+            constructor(action) {
+                super();
+                this.action = action;
+            }
+
+            onTick() {
+                return this.action();
+            }
+        }
+
+        function runBehaviorTree() {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = '';
+
+            // Example actions
+            const patrol = new Action(() => {
+                outputDiv.innerHTML += 'Patrolling<br>';
+                return 'SUCCESS';
+            });
+
+            const chase = new Action(() => {
+                outputDiv.innerHTML += 'Chasing<br>';
+                return 'SUCCESS';
+            });
+
+            const attack = new Action(() => {
+                outputDiv.innerHTML += 'Attacking<br>';
+                return 'SUCCESS';
+            });
+
+            // Example conditions
+            const isEnemyNear = new Action(() => {
+                const enemyNear = Math.random() < 0.5;
+                outputDiv.innerHTML += `Is enemy near? ${enemyNear}<br>`;
+                return enemyNear ? 'SUCCESS' : 'FAILURE';
+            });
+
+            const isEnemyInRange = new Action(() => {
+                const enemyInRange = Math.random() < 0.5;
+                outputDiv.innerHTML += `Is enemy in range? ${enemyInRange}<br>`;
+                return enemyInRange ? 'SUCCESS' : 'FAILURE';
+            });
+
+            const tree = new Selector([
+                new Sequence([
+                    isEnemyNear,
+                    new Selector([
+                        new Sequence([isEnemyInRange, attack]),
+                        chase
+                    ])
+                ]),
+                patrol
+            ]);
+
+            tree.tick();
+        }
+    </script>
+</body>
+</html>

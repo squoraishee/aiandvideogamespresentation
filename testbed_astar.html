@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A* Pathfinding Demo</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+    }
+    .grid {
+        border: 1px solid #ccc;
+        display: grid;
+        grid-template-columns: repeat(10, 40px);
+        grid-template-rows: repeat(10, 40px);
+    }
+    .cell {
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: white;
+    }
+    .actor {
+        background-color: green;
+    }
+    .goal {
+        background-color: red;
+    }
+    .obstacle {
+        background-color: black;
+    }
+    .button-container {
+        margin-top: 10px;
+    }
+</style>
+</head>
+<body>
+
+<div class="grid" id="grid"></div>
+<div class="button-container">
+    <button id="findPathButton">Find Path</button>
+    <button id="randomObstaclesButton">Add Random Obstacles</button>
+    <button id="paintBrushButton">Paint Brush</button>
+</div>
+
+<script>
+    const rows = 10;
+    const cols = 10;
+    const grid = [];
+    let actorPos = { row: 0, col: 0 };
+    let goalPos = { row: rows - 1, col: cols - 1 };
+    let painting = false;
+
+    const gridElement = document.getElementById('grid');
+    for (let row = 0; row < rows; row++) {
+        grid[row] = [];
+        for (let col = 0; col < cols; col++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            gridElement.appendChild(cell);
+            grid[row][col] = { element: cell, obstacle: false };
+            cell.addEventListener('mousedown', () => {
+                if (painting) {
+                    toggleObstacle(row, col);
+                }
+            });
+            cell.addEventListener('mouseover', (event) => {
+                if (painting && event.buttons === 1) {
+                    toggleObstacle(row, col);
+                }
+            });
+        }
+    }
+
+    grid[actorPos.row][actorPos.col].element.classList.add('actor');
+    grid[goalPos.row][goalPos.col].element.classList.add('goal');
+
+    function findPath(grid, start, end) {
+        const openSet = [start];
+        const cameFrom = {};
+        const gScore = {};
+        const fScore = {};
+        gScore[key(start)] = 0;
+        fScore[key(start)] = heuristic(start, end);
+
+        while (openSet.length > 0) {
+            openSet.sort((a, b) => fScore[key(a)] - fScore[key(b)]);
+            const current = openSet.shift();
+
+            if (current.row === end.row && current.col === end.col) {
+                return reconstructPath(cameFrom, current);
+            }
+
+            for (const neighbor of getNeighbors(grid, current)) {
+                const tentativeGScore = gScore[key(current)] + 1;
+
+                if (!gScore[key(neighbor)] || tentativeGScore < gScore[key(neighbor)]) {
+                    cameFrom[key(neighbor)] = current;
+                    gScore[key(neighbor)] = tentativeGScore;
+                    fScore[key(neighbor)] = gScore[key(neighbor)] + heuristic(neighbor, end);
+                    if (!openSet.some(node => node.row === neighbor.row && node.col === neighbor.col)) {
+                        openSet.push(neighbor);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    function heuristic(a, b) {
+        return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+    }
+
+    function getNeighbors(grid, cell) {
+        const neighbors = [];
+        if (cell.row > 0 && !grid[cell.row - 1][cell.col].obstacle) {
+            neighbors.push({ row: cell.row - 1, col: cell.col });
+        }
+        if (cell.row < rows - 1 && !grid[cell.row + 1][cell.col].obstacle) {
+            neighbors.push({ row: cell.row + 1, col: cell.col });
+        }
+        if (cell.col > 0 && !grid[cell.row][cell.col - 1].obstacle) {
+            neighbors.push({ row: cell.row, col: cell.col - 1 });
+        }
+        if (cell.col < cols - 1 && !grid[cell.row][cell.col + 1].obstacle) {
+            neighbors.push({ row: cell.row, col: cell.col + 1 });
+        }
+        return neighbors;
+    }
+
+    function reconstructPath(cameFrom, current) {
+        const totalPath = [current];
+        while (cameFrom[key(current)]) {
+            current = cameFrom[key(current)];
+            totalPath.unshift(current);
+        }
+        return totalPath;
+    }
+
+    function key(cell) {
+        return cell.row + '-' + cell.col;
+    }
+
+    async function animatePath(path) {
+        for (const step of path) {
+            grid[actorPos.row][actorPos.col].element.classList.remove('actor');
+            actorPos = step;
+            grid[actorPos.row][actorPos.col].element.classList.add('actor');
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+    }
+
+    function toggleObstacle(row, col) {
+        grid[row][col].obstacle = !grid[row][col].obstacle;
+        grid[row][col].element.classList.toggle('obstacle');
+    }
+
+    function addRandomObstacles() {
+        for (let i = 0; i < 10; i++) {
+            const randRow = Math.floor(Math.random() * rows);
+            const randCol = Math.floor(Math.random() * cols);
+            if ((randRow !== actorPos.row || randCol !== actorPos.col) && 
+                (randRow !== goalPos.row || randCol !== goalPos.col)) {
+                toggleObstacle(randRow, randCol);
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('findPathButton').addEventListener('click', async () => {
+            console.log('Starting pathfinding...');
+            const path = findPath(grid, { row: actorPos.row, col: actorPos.col }, { row: goalPos.row, col: goalPos.col });
+            if (path) {
+                console.log('Path found:', path);
+                await animatePath(path);
+            } else {
+                alert('No path found!');
+            }
+        });
+
+        document.getElementById('randomObstaclesButton').addEventListener('click', () => {
+            addRandomObstacles();
+        });
+
+        document.getElementById('paintBrushButton').addEventListener('click', () => {
+            painting = !painting;
+            document.getElementById('paintBrushButton').textContent = painting ? 'Painting On' : 'Paint Brush';
+        });
+    });
+</script>
+
+</body>
+</html>
+
+

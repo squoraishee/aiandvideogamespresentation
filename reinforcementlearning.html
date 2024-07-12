@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Reinforcement Learning</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="track" width="800" height="600"></canvas>
+    <div id="metrics">
+        <p>Position: <span id="position"></span></p>
+        <p>Angle: <span id="angle"></span></p>
+        <p>Speed: <span id="speed"></span></p>
+        <p>Reward: <span id="reward"></span></p>
+        <p>Last Run Time: <span id="lastRunTime">0</span> ms</p>
+        <p>Longest Run Time: <span id="longestRunTime">0</span> ms</p>
+        <p>Loop Count: <span id="loopCount">0</span></p>
+    </div>
+    <script>
+        const canvas = document.getElementById('track');
+        const ctx = canvas.getContext('2d');
+        const positionElement = document.getElementById('position');
+        const angleElement = document.getElementById('angle');
+        const speedElement = document.getElementById('speed');
+        const rewardElement = document.getElementById('reward');
+        const lastRunTimeElement = document.getElementById('lastRunTime');
+        const longestRunTimeElement = document.getElementById('longestRunTime');
+        const loopCountElement = document.getElementById('loopCount');
+
+        let startTime = Date.now();
+        let lastRunTime = 0;
+        let longestRunTime = 0;
+        let loopCount = 0;
+        let trackColor = 'black';
+
+        class Car {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.angle = 0;
+                this.speed = 0;
+                this.maxSpeed = 2;
+                this.acceleration = 0.1;
+                this.turnSpeed = 0.03;
+                this.color = 'red';
+                this.checkpoints = [false, false, false, false];
+            }
+
+            update() {
+                if (this.speed < this.maxSpeed) {
+                    this.speed += this.acceleration;
+                }
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-10, -5, 20, 10);
+                ctx.restore();
+            }
+
+            turnLeft() {
+                this.angle -= this.turnSpeed;
+            }
+
+            turnRight() {
+                this.angle += this.turnSpeed;
+            }
+
+            checkLoopCompletion() {
+                if (this.x > 390 && this.x < 410 && this.y > 90 && this.y < 110) {
+                    this.checkpoints[0] = true;
+                } else if (this.x > 690 && this.x < 710 && this.y > 290 && this.y < 310) {
+                    this.checkpoints[1] = true;
+                } else if (this.x > 390 && this.x < 410 && this.y > 490 && this.y < 510) {
+                    this.checkpoints[2] = true;
+                } else if (this.x > 90 && this.x < 110 && this.y > 290 && this.y < 310) {
+                    this.checkpoints[3] = true;
+                }
+
+                if (this.checkpoints.every(checkpoint => checkpoint)) {
+                    this.checkpoints = [false, false, false, false];
+                    const currentTime = Date.now();
+                    lastRunTime = currentTime - startTime;
+                    if (lastRunTime > longestRunTime) {
+                        longestRunTime = lastRunTime;
+                    }
+                    startTime = currentTime;
+                    loopCount++;
+
+                    lastRunTimeElement.textContent = `${lastRunTime}`;
+                    longestRunTimeElement.textContent = `${longestRunTime}`;
+                    loopCountElement.textContent = `${loopCount}`;
+                }
+            }
+        }
+
+        class QLearningAgent {
+            constructor(actions, alpha = 0.1, gamma = 0.9, epsilon = 0.1) {
+                this.qTable = {};
+                this.actions = actions;
+                this.alpha = alpha;
+                this.gamma = gamma;
+                this.epsilon = epsilon;
+            }
+
+            getQValue(state, action) {
+                return this.qTable[state] ? this.qTable[state][action] || 0 : 0;
+            }
+
+            setQValue(state, action, value) {
+                if (!this.qTable[state]) {
+                    this.qTable[state] = {};
+                }
+                this.qTable[state][action] = value;
+            }
+
+            chooseAction(state) {
+                if (Math.random() < this.epsilon) {
+                    return this.actions[Math.floor(Math.random() * this.actions.length)];
+                }
+                let maxQ = -Infinity;
+                let action = null;
+                for (const act of this.actions) {
+                    const q = this.getQValue(state, act);
+                    if (q > maxQ) {
+                        maxQ = q;
+                        action = act;
+                    }
+                }
+                return action;
+            }
+
+            learn(state, action, reward, nextState) {
+                const oldQ = this.getQValue(state, action);
+                const nextMaxQ = Math.max(...this.actions.map(a => this.getQValue(nextState, a)));
+                const newQ = oldQ + this.alpha * (reward + this.gamma * nextMaxQ - oldQ);
+                this.setQValue(state, action, newQ);
+            }
+        }
+
+        const car = new Car(400, 300);
+        const actions = ['left', 'right', 'forward'];
+        const agent = new QLearningAgent(actions);
+
+        function getState(car) {
+            return `${Math.round(car.x)},${Math.round(car.y)},${Math.round(car.angle * 10)}`;
+        }
+
+        function getReward(car) {
+            if (car.x <= 50 || car.x >= 750 || car.y <= 50 || car.y >= 550) {
+                car.color = 'blue'; // Change color in negative reward space
+                trackColor = 'red'; // Change track color in negative reward space
+                return -100;
+            } else {
+                car.color = 'red'; // Normal color
+                trackColor = 'black'; // Normal track color
+                return 1;
+            }
+        }
+
+        function drawTrack() {
+            ctx.strokeStyle = trackColor;
+            ctx.lineWidth = 5;
+            ctx.strokeRect(50, 50, 700, 500);
+
+            // Draw checkpoints
+            ctx.fillStyle = 'green';
+            ctx.fillRect(400 - 5, 100 - 5, 10, 10);
+            ctx.fillRect(700 - 5, 300 - 5, 10, 10);
+            ctx.fillRect(400 - 5, 500 - 5, 10, 10);
+            ctx.fillRect(100 - 5, 300 - 5, 10, 10);
+        }
+
+        function train() {
+            const state = getState(car);
+            const action = agent.chooseAction(state);
+            if (action === 'left') car.turnLeft();
+            if (action === 'right') car.turnRight();
+            car.update();
+            car.checkLoopCompletion();
+            const nextState = getState(car);
+            const reward = getReward(car);
+            agent.learn(state, action, reward, nextState);
+
+            positionElement.textContent = `(${Math.round(car.x)}, ${Math.round(car.y)})`;
+            angleElement.textContent = `${Math.round(car.angle * 100) / 100} radians`;
+            speedElement.textContent = `${Math.round(car.speed * 100) / 100}`;
+            rewardElement.textContent = `${reward}`;
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawTrack();
+            train();
+            car.update();
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+</html>
+
+
+
+
+

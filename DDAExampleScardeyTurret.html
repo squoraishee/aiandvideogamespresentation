@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Difficulty Shooter Game</title>
+    <style>
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        /*
+        This game - Scardey Turret is an example of Dynamic Difficulty Adjustment.
+        There are several turrets that fly about theboard and get generated
+        One turret fires at you.  
+
+        The player can move to an enemy and attack using spacebar.   
+        As you defeat enemies, the turrets become more and more challenging to deal with and they fire faster.
+        There's many more things that can be done with this game, this is just a simple example that I wrote of DDA in action
+        with an accompanying video for the presentation on AI and Viddeo games 
+
+        COpyright 2024 Shafik Quoraishee
+        */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let player, turrets, bullets, difficulty, score, lastShotTime;
+        let bulletSpeed = 2;
+        let gameOver = false;
+        const safeDistance = 200;
+        function resetGame() {
+            player = { x: 400, y: 300, size: 20, attackRadius: 0, maxAttackRadius: 50 };
+            turrets = [];
+            bullets = [];
+            difficulty = 1;
+            score = 0;
+            lastShotTime = Date.now();
+            gameOver = false;
+
+            for (let i = 0; i < 15; i++) createTurret();
+            for (let i = 0; i < 10; i++) createNonShootingTurret();
+            gameLoop();
+        }
+
+        function createTurret() {
+            const turret = {
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: 20,
+                color: 'purple',
+                canShoot: true,
+                cooldown: 1000 / difficulty, 
+            };
+            turrets.push(turret);
+        }
+
+        function createNonShootingTurret() {
+            const turret = {
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: 20,
+                color: 'red',
+                canShoot: false,
+            };
+            turrets.push(turret);
+        }
+
+        function adjustDifficulty() {
+            if (score > 10 && difficulty < 2) {
+                difficulty = 2;
+                bulletSpeed = 3;
+                for (let i = 0; i < 5; i++) createTurret();
+                console.log('Difficulty increased to 2');
+            } else if (score > 20 && difficulty < 3) {
+                difficulty = 3;
+                bulletSpeed = 4;
+                for (let i = 0; i < 5; i++) createTurret();
+                console.log('Difficulty increased to 3');
+            } else if (score > 30 && difficulty < 4) {
+                difficulty = 4;
+                bulletSpeed = 5;
+                for (let i = 0; i < 5; i++) createTurret();
+                console.log('Difficulty increased to 4');
+            } else if (score > 40 && difficulty < 5) {
+                difficulty = 5;
+                bulletSpeed = 6;
+                for (let i = 0; i < 5; i++) createTurret();
+                console.log('Difficulty increased to 5');
+            }
+        }
+
+        function shootBullet(turret) {
+            const angle = Math.atan2(player.y - turret.y, player.x - turret.x);
+            const bullet = {
+                x: turret.x,
+                y: turret.y,
+                vx: Math.cos(angle) * bulletSpeed,
+                vy: Math.sin(angle) * bulletSpeed,
+            };
+            bullets.push(bullet);
+        }
+
+        function updatePlayer() {
+            if (keys['ArrowUp']) player.y -= 5;
+            if (keys['ArrowDown']) player.y += 5;
+            if (keys['ArrowLeft']) player.x -= 5;
+            if (keys['ArrowRight']) player.x += 5;
+            if (keys[' ']) {
+                player.attackRadius = player.maxAttackRadius;
+            }
+
+            player.x = Math.max(0, Math.min(canvas.width, player.x));
+            player.y = Math.max(0, Math.min(canvas.height, player.y));
+        }
+
+        function updateTurrets() {
+            const now = Date.now();
+            turrets.forEach(turret => {
+                if (turret.canShoot) {
+                    const distance = Math.hypot(player.x - turret.x, player.y - turret.y);
+                    if (distance < safeDistance) {
+                        // Move turret away from the player
+                        const angle = Math.atan2(turret.y - player.y, turret.x - player.x);
+                        turret.x += Math.cos(angle) * 2;
+                        turret.y += Math.sin(angle) * 2;
+                    }
+
+                    if (now - lastShotTime >= turret.cooldown) {
+                        shootBullet(turret);
+                        lastShotTime = now;
+                    }
+                } else {
+                    // Move non-shooting turrets randomly
+                    turret.x += (Math.random() - 0.5) * 2;
+                    turret.y += (Math.random() - 0.5) * 2;
+                }
+
+                turret.x = Math.max(0, Math.min(canvas.width, turret.x));
+                turret.y = Math.max(0, Math.min(canvas.height, turret.y));
+            });
+        }
+
+        function updateBullets() {
+            bullets = bullets.filter(bullet => {
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+                return bullet.x > 0 && bullet.x < canvas.width && bullet.y > 0 && bullet.y < canvas.height;
+            });
+        }
+
+        function checkCollisions() {
+            bullets.forEach(bullet => {
+                const dist = Math.hypot(bullet.x - player.x, bullet.y - player.y);
+                if (dist < player.size) {
+                    gameOver = true;
+                }
+            });
+
+            turrets = turrets.filter(turret => {
+                const dist = Math.hypot(turret.x - player.x, turret.y - player.y);
+                if (dist < player.attackRadius) {
+                    score++;
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function drawPlayer() {
+            ctx.fillStyle = 'lime';
+            ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
+
+            if (player.attackRadius > 0) {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.attackRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'cyan';
+                ctx.stroke();
+                player.attackRadius -= 2;
+        }
+
+        function drawTurrets() {
+            turrets.forEach(turret => {
+                ctx.fillStyle = turret.color;
+                ctx.fillRect(turret.x - turret.size / 2, turret.y - turret.size / 2, turret.size, turret.size);
+            });
+        }
+
+        function drawBullets() {
+            ctx.fillStyle = 'yellow';
+            bullets.forEach(bullet => {
+                ctx.fillRect(bullet.x - 2, bullet.y - 2, 4, 4);
+            });
+        }
+
+        function drawScore() {
+            ctx.fillStyle = 'white';
+            ctx.font = '16px Arial';
+            ctx.fillText(Score: ${score}, 10, 20);
+            ctx.fillText(Difficulty: ${difficulty}, 10, 40);
+            ctx.fillText(Bullet Speed: ${bulletSpeed}, 10, 60);
+        }
+
+        function drawGameOver() {
+            ctx.fillStyle = 'white';
+            ctx.font = '40px Arial';
+            ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
+            ctx.font = '20px Arial';
+            ctx.fillText('Press R to Restart', canvas.width / 2 - 80, canvas.height / 2 + 40);
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameOver) {
+                drawGameOver();
+                return;
+            }
+
+            updatePlayer();
+            updateTurrets();
+            updateBullets();
+            checkCollisions();
+            adjustDifficulty();
+
+            drawPlayer();
+            drawTurrets();
+            drawBullets();
+            drawScore();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        let keys = {};
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            if (gameOver && e.key === 'r') {
+                resetGame();
+            }
+        });
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        resetGame();
+    </script>
+</body>
+</html>
